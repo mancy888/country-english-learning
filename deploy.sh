@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===================================================================
-#  一键部署 country-english-learning 到 GitHub Pages
+#  一键部署 english-learning 到 GitHub Pages
 # -------------------------------------------------------------------
 #  用法:
 #    bash deploy.sh                                  # 交互输入 PAT，部署仓库内现有改动
@@ -8,16 +8,20 @@
 #    SOURCE_HTML=/path/to/x.html bash deploy.sh      # 先把源文件同步为 index.html 再部署
 #
 #  说明:
-#    - 仓库目录 = 本脚本所在目录（D:\Workbuddy Files\country-english-learning）
-#    - 直接修改本目录里的 index.html 后运行即可发布
+#    - 仓库目录 = 本脚本所在目录（D:\Workbuddy Files\english-learning）
+#    - 站点 = index.html（外壳） + decks/*.js（各学习板块词库）
 #    - token 仅运行时使用，结束后会从 git remote 里清除，不落盘
+#
+#  ⚠️ 首次使用前：需要先在 GitHub 网页把仓库
+#     country-english-learning 重命名为 english-learning
+#     （Settings → General → Repository name → Rename）
 # ===================================================================
 set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-OWNER_REPO="mancy888/country-english-learning"
+OWNER_REPO="mancy888/english-learning"
 TOKENLESS_REMOTE="https://github.com/${OWNER_REPO}.git"
-PAGES_URL="https://mancy888.github.io/country-english-learning/"
+PAGES_URL="https://mancy888.github.io/english-learning/"
 NODE="C:/Users/VIP/.workbuddy/binaries/node/versions/22.22.2/node.exe"
 
 echo "📁 仓库目录: $REPO_DIR"
@@ -39,6 +43,15 @@ if [ -z "$TOKEN" ]; then
 fi
 
 cd "$REPO_DIR"
+
+# 2.5) 预检：仓库是否已改名到位
+REPO_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/${OWNER_REPO}")
+if [ "$REPO_CODE" = "404" ]; then
+  echo "❌ 找不到仓库 ${OWNER_REPO}"
+  echo "   请先在 GitHub 把仓库改名：Settings → General → Repository name → 填 english-learning"
+  echo "   直达链接: https://github.com/mancy888/country-english-learning/settings"
+  exit 1
+fi
 
 # 3) 临时配置带 token 的 remote
 git remote remove origin 2>/dev/null || true
