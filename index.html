@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🌍 国家 & 首都英语小课堂</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<style>
+  :root{
+    --sky1:#aee4ff; --sky2:#ffe9a8; --card:#ffffff;
+    --ink:#2b2d42; --soft:#6b7280; --accent:#ff7a59; --good:#22c55e; --line:#e6e9ef;
+    --side1:#2b2d42; --side2:#3a3d5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:"Comic Sans MS","Yuanti SC","PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,var(--sky1),var(--sky2));
+    color:var(--ink); min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:18px;
+  }
+  .app{
+    width:100%; max-width:1280px; background:var(--card); border-radius:28px;
+    box-shadow:0 20px 50px rgba(0,0,0,.18); overflow:hidden; position:relative;
+    display:flex; flex-direction:row; align-items:stretch;
+    max-height: calc(100vh - 36px);
+  }
+
+  /* ---------- 侧边栏 ---------- */
+  .sidebar{
+    flex:0 0 174px; background:linear-gradient(180deg,var(--side1),var(--side2)); color:#fff;
+    display:flex; flex-direction:column; padding:18px 12px; gap:10px;
+  }
+  .sidebar .brand{ font-size:15px; font-weight:800; text-align:center; line-height:1.45; margin-bottom:6px; opacity:.95; }
+  .sidebar .nav-btn{
+    display:flex; align-items:center; gap:9px; width:100%; border:none; cursor:pointer;
+    font-family:inherit; font-weight:700; font-size:15px; color:#fff;
+    background:rgba(255,255,255,.08); border-radius:14px; padding:13px 14px; text-align:left;
+    transition:background .15s, box-shadow .15s;
+  }
+  .sidebar .nav-btn:hover{ background:rgba(255,255,255,.18); }
+  .sidebar .nav-btn.active{ background:linear-gradient(90deg,#ff9a8b,#ff6a88); box-shadow:0 6px 14px rgba(255,106,136,.4); }
+  .sidebar .nav-btn .ico{ font-size:20px; }
+  .sidebar .tip{ margin-top:auto; font-size:12px; opacity:.7; line-height:1.55; }
+
+  .col-left{ flex:1 1 50%; min-width:0; display:flex; flex-direction:column; overflow-y:auto; padding-right:4px; }
+  .col-right{ flex:1 1 42%; min-width:0; display:flex; flex-direction:column; padding:14px 14px 14px 0; }
+  h1{
+    margin:0; padding:16px 20px; font-size:22px; text-align:center;
+    background:linear-gradient(90deg,#ff9a8b,#ff6a88,#ffb86c); color:#fff;
+    letter-spacing:1px;
+  }
+  .stage{ padding:18px 20px 6px; text-align:center; }
+  /* ---------- 球形国旗 ---------- */
+  .globe{
+    width:180px; height:180px; margin:6px auto 10px; border-radius:50%;
+    position:relative; background:#eaf4ff; overflow:hidden;
+    box-shadow: inset -18px -18px 38px rgba(0,0,0,.28),
+                inset 12px 12px 30px rgba(255,255,255,.55),
+                0 12px 26px rgba(0,0,0,.22);
+    animation: bob 3.4s ease-in-out infinite;
+  }
+  .globe img{ width:100%; height:100%; object-fit:contain; display:block; }
+  .globe .emoji{
+    display:none; width:100%; height:100%; align-items:center; justify-content:center;
+    font-size:96px; line-height:1;
+  }
+  .globe .shine{
+    position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255,255,255,.75), rgba(255,255,255,0) 38%),
+      radial-gradient(circle at 70% 78%, rgba(0,0,0,.25), rgba(0,0,0,0) 45%);
+  }
+  .globe .sweep{
+    position:absolute; top:-40%; left:-40%; width:60%; height:180%;
+    background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.45),rgba(255,255,255,0));
+    transform:rotate(18deg); animation: sweep 4.5s linear infinite; pointer-events:none;
+  }
+  @keyframes bob{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+  @keyframes sweep{ 0%{left:-50%} 100%{left:120%} }
+
+  .word{ font-size:40px; font-weight:800; letter-spacing:.5px; margin:2px 0 0; }
+  .ipa{ font-size:20px; color:var(--soft); margin:4px 0; }
+  .ipa b{ color:var(--accent); font-weight:700; }
+  .zh{ font-size:22px; color:var(--ink); margin-bottom:6px; }
+
+  .controls{ display:flex; gap:10px; justify-content:center; align-items:center; margin:6px 0 2px; }
+  .btn{
+    border:none; border-radius:14px; padding:10px 16px; font-size:16px; cursor:pointer;
+    font-family:inherit; font-weight:700; color:#fff; background:#ff9a8b;
+    box-shadow:0 4px 0 #e07a6c; transition:transform .05s;
+  }
+  .btn:active{ transform:translateY(2px); box-shadow:0 2px 0 #e07a6c; }
+  .btn.speak{ background:#4dabf7; box-shadow:0 4px 0 #3b8fd6; }
+  .btn.ghost{ background:#fff; color:var(--soft); box-shadow:0 4px 0 #d7dbe3; }
+
+  /* ---------- 世界地图 ---------- */
+  .map-panel{ margin:0; border-radius:18px; overflow:hidden; background:#dff1ff;
+              border:1px solid var(--line); position:relative; flex:1; display:flex; }
+  .map-panel svg{ display:block; width:100%; height:100%; }
+  .country{ fill:#bfe0ff; stroke:#fff; stroke-width:.6; }
+  .country.active{ fill:#ff8787; stroke:#ff5252; stroke-width:1.2; }
+  .pin{ fill:#ffd43b; stroke:#fff; stroke-width:1.5; }
+  .pin-halo{ fill:#ffd43b; opacity:.35; animation: pulse 1.6s ease-out infinite; transform-origin:center; }
+  .pin-label{ font-size:11px; font-weight:700; fill:#1d3557; text-anchor:middle; paint-order:stroke;
+              stroke:#fff; stroke-width:2.4px; }
+  @keyframes pulse{ 0%{transform:scale(.6);opacity:.5} 100%{transform:scale(2.4);opacity:0} }
+
+  /* ---------- 练习区 ---------- */
+  .practice{ padding:10px 20px 20px; }
+  .progress{ text-align:center; font-size:14px; color:var(--soft); margin-bottom:8px; }
+  .input-row{ display:flex; gap:8px; }
+  #answer{
+    flex:1; font-size:22px; padding:12px 14px; border-radius:14px; border:2px solid var(--line);
+    font-family:inherit; text-align:center; outline:none; transition:border-color .15s, background .15s;
+  }
+  #answer:focus{ border-color:#4dabf7; }
+  #answer.ok{ border-color:var(--good); background:#eafff1; }
+  #answer.bad{ border-color:#ff6b6b; background:#fff0f0; animation: shake .35s; }
+  @keyframes shake{ 0%,100%{transform:translateX(0)} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
+  .feedback{ text-align:center; min-height:24px; margin-top:8px; font-size:16px; font-weight:700; }
+  .feedback.ok{ color:var(--good); } .feedback.bad{ color:#ff6b6b; }
+  .nav{ display:flex; gap:8px; justify-content:center; margin-top:10px; }
+  .hint-line{ text-align:center; font-size:14px; color:var(--soft); margin-top:6px; }
+  .steps{ text-align:center; font-size:13px; color:var(--soft); margin-top:10px; }
+
+  /* ---------- 语音麦克风 ---------- */
+  .mic{
+    display:block; margin:6px auto; width:86px; height:86px; border-radius:50%;
+    border:none; cursor:pointer; color:#fff; font-size:38px; line-height:1;
+    background:radial-gradient(circle at 35% 30%,#ff9a8b,#ff6a88);
+    box-shadow:0 8px 20px rgba(255,106,136,.45); transition:transform .08s; position:relative;
+  }
+  .mic:active{ transform:scale(.94); }
+  .mic.active{ animation: micpulse 1.1s ease-out infinite; background:radial-gradient(circle at 35% 30%,#ff6a88,#e23b6d); }
+  @keyframes micpulse{ 0%{box-shadow:0 0 0 0 rgba(255,106,136,.55)} 100%{box-shadow:0 0 0 28px rgba(255,106,136,0)} }
+  .listening{ text-align:center; font-size:16px; color:#ff6a88; font-weight:700; margin:4px 0; }
+  .listening b{ color:var(--accent); }
+  .heard{ text-align:center; min-height:22px; font-size:16px; color:var(--soft); margin-top:4px; }
+  .heard b{ color:var(--ink); }
+  .fallback{ margin-top:10px; }
+  .fallback input{ width:100%; font-size:20px; padding:11px 14px; border-radius:14px; border:2px solid var(--line); text-align:center; font-family:inherit; }
+
+  /* ---------- 庆祝 ---------- */
+  #cheer{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    flex-direction:column; background:rgba(255,255,255,.82); z-index:5; border-radius:28px;
+  }
+  #cheer.show{ display:flex; animation: pop .3s ease; }
+  #cheer .big{ font-size:46px; }
+  #cheer .txt{ font-size:26px; font-weight:800; color:var(--good); margin-top:6px; }
+  @keyframes pop{ from{transform:scale(.8);opacity:0} to{transform:scale(1);opacity:1} }
+
+  /* ---------- 开始遮罩 ---------- */
+  #start{
+    position:absolute; inset:0; z-index:10; background:rgba(43,45,66,.92);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; padding:30px;
+  }
+  #start h2{ font-size:26px; margin:0 0 6px; }
+  #start p{ font-size:15px; opacity:.85; margin:0 0 18px; line-height:1.6; }
+  #start .btn{ font-size:20px; padding:14px 30px; }
+  .confetti{ position:absolute; top:-10px; width:10px; height:14px; opacity:.9; border-radius:2px; }
+
+  /* ---------- 窄屏回退：纵向堆叠 ---------- */
+  @media (max-width: 860px){
+    .app{ flex-direction:column; max-height:none; }
+    .sidebar{ flex:none; width:100%; flex-direction:row; flex-wrap:wrap; align-items:center; justify-content:center; padding:12px; gap:8px; }
+    .sidebar .brand{ width:100%; margin-bottom:0; }
+    .sidebar .nav-btn{ width:auto; }
+    .sidebar .tip{ display:none; }
+    .col-left, .col-right{ flex:none; width:100%; }
+    .col-left{ overflow:visible; }
+    .col-right{ padding:0 14px 14px; }
+    .map-panel{ height:210px; }
+    .map-panel svg{ height:210px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="brand">🌍<br>英语小课堂</div>
+    <button class="nav-btn active" id="navCountry" data-view="country"><span class="ico">🌍</span><span>国家</span></button>
+    <button class="nav-btn" id="navCapital" data-view="capital"><span class="ico">🏛️</span><span>首都</span></button>
+    <div class="tip">点「国家」学国名，点「首都」学各国首都的英文。</div>
+  </div>
+
+  <div class="col-left">
+  <h1 id="pageTitle">🌍 国家英语小课堂</h1>
+
+  <div class="stage">
+    <div class="globe" id="globe">
+      <img id="flagImg" alt="flag" />
+      <div class="emoji" id="flagEmoji"></div>
+      <div class="sweep"></div>
+      <div class="shine"></div>
+    </div>
+    <div class="word" id="en">China</div>
+    <div class="ipa">音标：<b id="ipa">/ˈtʃaɪnə/</b></div>
+    <div class="zh" id="zh">中国</div>
+
+    <div class="controls">
+      <button class="btn speak" id="speakBtn">🔊 听发音</button>
+      <button class="btn ghost" id="hintBtn">💡 提示</button>
+    </div>
+    <button class="mic" id="micBtn" title="点击后读出英文">🎤</button>
+    <div class="listening" id="listening" style="display:none">🎧 我在听… 请说出：<b id="listenWord"></b></div>
+    <div class="heard" id="heard"></div>
+    <div class="feedback" id="feedback"></div>
+  </div>
+
+  <div class="practice">
+    <div class="progress" id="progress">第 1 / 100 个</div>
+    <div class="hint-line" id="hintLine"></div>
+    <div class="fallback" id="fallback" style="display:none">
+      <input id="answer" type="text" autocomplete="off" autocorrect="off"
+             placeholder="（语音不可用）在这里拼出英文…" />
+    </div>
+    <div class="nav">
+      <button class="btn ghost" id="prevBtn">⬅️ 上一个</button>
+      <button class="btn ghost" id="shuffleBtn">🔀 打乱</button>
+      <button class="btn ghost" id="nextBtn">下一个 ➡️</button>
+    </div>
+    <div class="steps">👂 听发音 → 🎤 读出英文 → 🎉 答对就进入下一个</div>
+  </div>
+  </div><!-- /col-left -->
+
+  <div class="col-right">
+    <div class="map-panel">
+      <svg id="worldmap" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div><!-- /col-right -->
+
+  <div id="cheer">
+    <div class="big">🎉🎊🌟</div>
+    <div class="txt">太棒了！</div>
+  </div>
+
+  <div id="start">
+    <h2>👋 准备好了吗？</h2>
+    <p id="startText">跟着小地球，一边看国旗一边学国家英文。<br>听完发音，把英文拼出来就好啦！</p>
+    <button class="btn" id="startBtn">🚀 开始学习</button>
+  </div>
+</div>
+
+<script>
+/* ===================== 数据 ===================== */
+/* 字段：国家英文, 国家中文, 国家音标, iso(小写), 国家中心纬, 国家中心经, 地图名,
+         首都英文, 首都中文, 首都音标, 首都纬, 首都经 */
+const RAW = [
+  ["China","中国","ˈtʃaɪnə","cn",35.0,103.0,"China","Beijing","北京","beɪˈdʒɪŋ",39.90,116.41],
+  ["United States","美国","juˈnaɪtɪd ˈsteɪts","us",39.8,-98.6,"United States of America","Washington","华盛顿","ˈwɒʃɪŋtən",38.90,-77.04],
+  ["United Kingdom","英国","juˈnaɪtɪd ˈkɪŋdəm","gb",54.0,-2.0,"United Kingdom","London","伦敦","ˈlʌndən",51.51,-0.13],
+  ["Japan","日本","dʒəˈpæn","jp",36.2,138.3,"Japan","Tokyo","东京","ˈtoʊkioʊ",35.68,139.69],
+  ["South Korea","韩国","saʊθ kəˈriə","kr",36.5,127.8,"South Korea","Seoul","首尔","soʊl",37.57,126.98],
+  ["France","法国","frɑːns","fr",46.6,2.2,"France","Paris","巴黎","ˈpærɪs",48.86,2.35],
+  ["Germany","德国","ˈdʒɜːrməni","de",51.2,10.5,"Germany","Berlin","柏林","bɜːrˈlɪn",52.52,13.40],
+  ["Italy","意大利","ˈɪtəli","it",41.9,12.6,"Italy","Rome","罗马","roʊm",41.90,12.50],
+  ["Spain","西班牙","speɪn","es",40.0,-3.7,"Spain","Madrid","马德里","məˈdrɪd",40.42,-3.70],
+  ["Canada","加拿大","ˈkænədə","ca",56.1,-106.3,"Canada","Ottawa","渥太华","ˈɒtəwə",45.42,-75.70],
+  ["Australia","澳大利亚","ɒˈstreɪliə","au",-25.3,133.8,"Australia","Canberra","堪培拉","ˈkænbərə",-35.28,149.13],
+  ["Brazil","巴西","brəˈzɪl","br",-14.2,-51.9,"Brazil","Brasília","巴西利亚","brəˈzɪliə",-15.79,-47.88],
+  ["India","印度","ˈɪndiə","in",22.0,79.0,"India","New Delhi","新德里","njuː ˈdeli",28.61,77.21],
+  ["Russia","俄罗斯","ˈrʌʃə","ru",61.5,105.3,"Russia","Moscow","莫斯科","ˈmɒskoʊ",55.75,37.62],
+  ["Mexico","墨西哥","ˈmeksɪkoʊ","mx",23.6,-102.5,"Mexico","Mexico City","墨西哥城","ˈmeksɪkoʊ ˈsɪti",19.43,-99.13],
+  ["Egypt","埃及","ˈiːdʒɪpt","eg",26.8,30.8,"Egypt","Cairo","开罗","ˈkaɪroʊ",30.04,31.24],
+  ["Thailand","泰国","ˈtaɪlænd","th",15.9,100.99,"Thailand","Bangkok","曼谷","ˈbæŋkɒk",13.76,100.50],
+  ["Singapore","新加坡","ˈsɪŋəpɔːr","sg",1.35,103.8,"Singapore","Singapore","新加坡","ˈsɪŋəpɔːr",1.35,103.82],
+  ["Vietnam","越南","ˌvjetˈnɑːm","vn",14.06,108.3,"Vietnam","Hanoi","河内","hæˈnɔɪ",21.03,105.85],
+  ["Turkey","土耳其","ˈtɜːrki","tr",39.0,35.2,"Turkey","Ankara","安卡拉","ˈæŋkərə",39.93,32.86],
+  ["Netherlands","荷兰","ˈneðərləndz","nl",52.1,5.3,"Netherlands","Amsterdam","阿姆斯特丹","ˈæmstərdæm",52.37,4.90],
+  ["Switzerland","瑞士","ˈswɪtsərlənd","ch",46.8,8.2,"Switzerland","Bern","伯尔尼","bɜːrn",46.95,7.45],
+  ["Sweden","瑞典","ˈswiːdən","se",60.1,18.6,"Sweden","Stockholm","斯德哥尔摩","ˈstɒkhəʊlm",59.33,18.07],
+  ["Norway","挪威","ˈnɔːrweɪ","no",60.5,8.5,"Norway","Oslo","奥斯陆","ˈɒzloʊ",59.91,10.75],
+  ["Greece","希腊","ɡriːs","gr",39.1,21.8,"Greece","Athens","雅典","ˈæθɪnz",37.98,23.73],
+  ["Portugal","葡萄牙","ˈpɔːrtʃʊɡl","pt",39.4,-8.2,"Portugal","Lisbon","里斯本","ˈlɪzbən",38.72,-9.14],
+  ["Poland","波兰","ˈpoʊlənd","pl",51.9,19.1,"Poland","Warsaw","华沙","ˈwɔːrsɔː",52.23,21.01],
+  ["Ireland","爱尔兰","ˈaɪərlənd","ie",53.4,-8.2,"Ireland","Dublin","都柏林","ˈdʌblɪn",53.35,-6.26],
+  ["New Zealand","新西兰","njuː ˈziːlənd","nz",-40.9,174.9,"New Zealand","Wellington","惠灵顿","ˈwelɪŋtən",-41.29,174.78],
+  ["Argentina","阿根廷","ˌɑːrdʒənˈtiːnə","ar",-38.4,-63.6,"Argentina","Buenos Aires","布宜诺斯艾利斯","ˈbweɪnəs ˈaɪrɪz",-34.60,-58.38],
+  ["South Africa","南非","ˈsaʊθ ˈæfrɪkə","za",-30.6,22.9,"South Africa","Pretoria","比勒陀利亚","prɪˈtɔːriə",-25.75,28.19],
+  ["Saudi Arabia","沙特阿拉伯","ˈsaʊdi əˈreɪbiə","sa",23.9,45.1,"Saudi Arabia","Riyadh","利雅得","rɪˈjɑːd",24.71,46.68],
+  ["Indonesia","印度尼西亚","ˌɪndəˈniːʒə","id",-0.79,113.9,"Indonesia","Jakarta","雅加达","dʒəˈkɑːrtə",-6.21,106.85],
+  ["Malaysia","马来西亚","məˈleɪʒə","my",4.2,101.98,"Malaysia","Kuala Lumpur","吉隆坡","ˈkwɑːlə ˈlʊmpʊr",3.14,101.69],
+  ["Philippines","菲律宾","ˈfɪlɪpiːnz","ph",12.9,121.8,"Philippines","Manila","马尼拉","məˈnɪlə",14.60,120.98],
+  ["Finland","芬兰","ˈfɪnlənd","fi",61.9,25.7,"Finland","Helsinki","赫尔辛基","ˈhelsɪŋki",60.17,24.94],
+  ["Denmark","丹麦","ˈdenmɑːrk","dk",56.3,9.5,"Denmark","Copenhagen","哥本哈根","ˈkoʊpənhɑːɡən",55.68,12.57],
+  ["Belgium","比利时","ˈbeldʒəm","be",50.5,4.5,"Belgium","Brussels","布鲁塞尔","ˈbrʌslz",50.85,4.35],
+  ["Austria","奥地利","ˈɔːstriə","at",47.5,14.6,"Austria","Vienna","维也纳","viˈenə",48.21,16.37],
+  ["Czech Republic","捷克","tʃek rɪˈpʌblɪk","cz",49.8,15.5,"Czechia","Prague","布拉格","prɑːɡ",50.08,14.44],
+  ["Ukraine","乌克兰","juˈkreɪn","ua",48.4,31.2,"Ukraine","Kyiv","基辅","ˈkiːjɪv",50.45,30.52],
+  ["Romania","罗马尼亚","roʊˈmeɪniə","ro",45.9,24.9,"Romania","Bucharest","布加勒斯特","ˈbuːkərest",44.43,26.10],
+  ["Hungary","匈牙利","ˈhʌŋɡəri","hu",47.2,19.5,"Hungary","Budapest","布达佩斯","ˈbjuːdəpest",47.50,19.04],
+  ["Bulgaria","保加利亚","bʌlˈɡɛəriə","bg",42.7,25.5,"Bulgaria","Sofia","索菲亚","ˈsoʊfiə",42.70,23.32],
+  ["Croatia","克罗地亚","kroʊˈeɪʃə","hr",45.1,15.2,"Croatia","Zagreb","萨格勒布","ˈzɑːɡreb",45.81,15.98],
+  ["Serbia","塞尔维亚","ˈsɜːrbiə","rs",44.0,21.0,"Serbia","Belgrade","贝尔格莱德","ˈbelɡreɪd",44.79,20.45],
+  ["Iceland","冰岛","ˈaɪslənd","is",64.96,-19.0,"Iceland","Reykjavík","雷克雅未克","ˌreɪkjəˈviːk",64.15,-21.94],
+  ["Luxembourg","卢森堡","ˈlʌksəmbɜːrɡ","lu",49.8,6.1,"Luxembourg","Luxembourg","卢森堡","ˈlʌksəmbɜːrɡ",49.61,6.13],
+  ["Chile","智利","ˈtʃɪli","cl",-35.7,-71.5,"Chile","Santiago","圣地亚哥","ˌsæntiˈɑːɡoʊ",-33.45,-70.66],
+  ["Colombia","哥伦比亚","kəˈlɒmbiə","co",4.6,-74.3,"Colombia","Bogotá","波哥大","ˌboʊɡəˈtɑː",4.71,-74.07],
+  ["Peru","秘鲁","pəˈruː","pe",-9.2,-75.0,"Peru","Lima","利马","ˈliːmə",-12.05,-77.04],
+  ["Venezuela","委内瑞拉","ˌvenəˈzweɪlə","ve",6.4,-66.6,"Venezuela","Caracas","加拉加斯","kəˈrɑːkəs",10.48,-66.90],
+  ["Ecuador","厄瓜多尔","ˈekwədɔːr","ec",-1.8,-78.2,"Ecuador","Quito","基多","ˈkiːtoʊ",-0.18,-78.47],
+  ["Cuba","古巴","ˈkjuːbə","cu",21.5,-77.8,"Cuba","Havana","哈瓦那","həˈvænə",23.11,-82.37],
+  ["Nigeria","尼日利亚","naɪˈdʒɪəriə","ng",9.1,8.7,"Nigeria","Abuja","阿布贾","əˈbuːdʒə",9.07,7.49],
+  ["Kenya","肯尼亚","ˈkenjə","ke",-0.02,37.9,"Kenya","Nairobi","内罗毕","naɪˈroʊbi",-1.29,36.82],
+  ["Morocco","摩洛哥","məˈrɒkoʊ","ma",31.8,-7.1,"Morocco","Rabat","拉巴特","rəˈbɑːt",34.02,-6.85],
+  ["Tunisia","突尼斯","ˈtuːnɪʒə","tn",33.9,9.5,"Tunisia","Tunis","突尼斯","ˈtuːnɪs",36.81,10.18],
+  ["Israel","以色列","ˈɪzriəl","il",31.0,35.0,"Israel","Jerusalem","耶路撒冷","dʒəˈruːsələm",31.78,35.22],
+  ["United Arab Emirates","阿联酋","juˈnaɪtɪd ˈærəb ˈemɪrɪts","ae",23.4,53.8,"United Arab Emirates","Abu Dhabi","阿布扎比","ˌæbuː ˈdɑːbi",24.45,54.38],
+  ["Qatar","卡塔尔","ˈkɑːtɑːr","qa",25.3,51.2,"Qatar","Doha","多哈","ˈdoʊhə",25.29,51.53],
+  ["Kuwait","科威特","kəˈweɪt","kw",29.3,47.5,"Kuwait","Kuwait City","科威特城","kəˈweɪt ˈsɪti",29.38,47.99],
+  ["Pakistan","巴基斯坦","ˌpɑːkɪˈstɑːn","pk",30.4,69.3,"Pakistan","Islamabad","伊斯兰堡","ɪsˈlɑːməbɑːd",33.68,73.05],
+  ["Bangladesh","孟加拉国","ˌbæŋɡləˈdeʃ","bd",23.7,90.4,"Bangladesh","Dhaka","达卡","ˈdɑːkə",23.81,90.41],
+  ["Sri Lanka","斯里兰卡","ˌsri ˈlæŋkə","lk",7.9,80.8,"Sri Lanka","Colombo","科伦坡","kəˈlʌmboʊ",6.93,79.85],
+  ["Nepal","尼泊尔","nəˈpɔːl","np",28.4,84.1,"Nepal","Kathmandu","加德满都","ˌkɑːtmɑːnduː",27.72,85.32],
+  ["Iran","伊朗","ɪˈrɑːn","ir",32.4,53.7,"Iran","Tehran","德黑兰","teˈrɑːn",35.69,51.39],
+  ["Iraq","伊拉克","ɪˈrɑːk","iq",33.2,43.7,"Iraq","Baghdad","巴格达","ˈbæɡdæd",33.32,44.36],
+  ["Afghanistan","阿富汗","æfˈɡænɪstɑːn","af",33.9,67.7,"Afghanistan","Kabul","喀布尔","ˈkɑːbʊl",34.53,69.17],
+  ["Kazakhstan","哈萨克斯坦","ˌkæzækˈstɑːn","kz",48.0,67.0,"Kazakhstan","Astana","阿斯塔纳","əsˈtɑːnə",51.17,71.45],
+  ["Mongolia","蒙古","ˈmɒŋɡoʊliə","mn",46.9,103.8,"Mongolia","Ulaanbaatar","乌兰巴托","ˌuːlɑːnˈbɑːtər",47.92,106.92],
+  ["North Korea","朝鲜","nɔːrθ kəˈriə","kp",40.3,127.5,"North Korea","Pyongyang","平壤","ˌpjɒŋˈjæŋ",39.03,125.75],
+  ["Myanmar","缅甸","ˈmjænmɑːr","mm",21.9,95.96,"Myanmar","Naypyidaw","内比都","ˌneɪpjɪˈdɔː",19.76,96.13],
+  ["Cambodia","柬埔寨","kæmˈboʊdiə","kh",12.6,104.9,"Cambodia","Phnom Penh","金边","ˌpnɒm ˈpen",11.56,104.92],
+  ["Laos","老挝","laʊs","la",19.9,102.5,"Laos","Vientiane","万象","ˌvjentɪˈɑːn",17.97,102.61],
+  ["Brunei","文莱","bruːˈnaɪ","bn",4.5,114.7,"Brunei","Bandar Seri Begawan","斯里巴加湾市","ˌbɑːndər ˌseri bəˈɡɑːwən",4.94,114.95],
+  ["Slovakia","斯洛伐克","sloʊˈvækiə","sk",48.7,19.7,"Slovakia","Bratislava","布拉迪斯拉发","ˌbrɑːtɪˈslɑːvə",48.15,17.12],
+  ["Slovenia","斯洛文尼亚","sloʊˈviːniə","si",46.1,14.8,"Slovenia","Ljubljana","卢布尔雅那","ljuːˈbljɑːnə",46.05,14.51],
+  ["Estonia","爱沙尼亚","eˈstoʊniə","ee",58.6,25.0,"Estonia","Tallinn","塔林","ˈtɑːlɪn",59.44,24.75],
+  ["Latvia","拉脱维亚","ˈlɑːtviə","lv",56.9,24.6,"Latvia","Riga","里加","ˈriːɡə",56.95,24.11],
+  ["Lithuania","立陶宛","ˌlɪθjuˈeɪniə","lt",55.2,23.9,"Lithuania","Vilnius","维尔纽斯","ˈvɪlniəs",54.69,25.28],
+  ["Belarus","白俄罗斯","ˌbeləˈruːs","by",53.7,27.9,"Belarus","Minsk","明斯克","mɪnsk",53.90,27.57],
+  ["Georgia","格鲁吉亚","ˈdʒɔːrdʒə","ge",42.3,43.6,"Georgia","Tbilisi","第比利斯","təˈbɪlɪsi",41.72,44.78],
+  ["Armenia","亚美尼亚","ɑːrˈmiːniə","am",40.3,45.0,"Armenia","Yerevan","埃里温","ˌjerəˈvɑːn",40.18,44.51],
+  ["Azerbaijan","阿塞拜疆","ˌæzərbaɪˈdʒɑːn","az",40.1,47.6,"Azerbaijan","Baku","巴库","bɑːˈkuː",40.41,49.87],
+  ["Jordan","约旦","ˈdʒɔːrdn","jo",31.3,36.6,"Jordan","Amman","安曼","əˈmɑːn",31.95,35.93],
+  ["Lebanon","黎巴嫩","ˈlebənən","lb",33.9,35.9,"Lebanon","Beirut","贝鲁特","beɪˈruːt",33.89,35.50],
+  ["Syria","叙利亚","ˈsɪriə","sy",35.0,38.5,"Syria","Damascus","大马士革","dəˈmæskəs",33.51,36.29],
+  ["Oman","阿曼","oʊˈmɑːn","om",21.5,56.1,"Oman","Muscat","马斯喀特","mʌsˈkɑːt",23.59,58.41],
+  ["Bahrain","巴林","bɑːˈreɪn","bh",26.0,50.5,"Bahrain","Manama","麦纳麦","məˈnɑːmə",26.22,50.58],
+  ["Yemen","也门","ˈjemen","ye",15.6,48.5,"Yemen","Sana'a","萨那","sɑːˈnɑː",15.37,44.19],
+  ["Algeria","阿尔及利亚","ˌældʒɪˈrɪə","dz",28.0,1.7,"Algeria","Algiers","阿尔及尔","ælˈdʒɪərz",36.75,3.06],
+  ["Libya","利比亚","ˈlɪbiə","ly",26.3,17.2,"Libya","Tripoli","的黎波里","ˈtrɪpəli",32.89,13.19],
+  ["Ethiopia","埃塞俄比亚","ˌiːθiˈoʊpiə","et",9.1,40.5,"Ethiopia","Addis Ababa","亚的斯亚贝巴","ˌædɪs ˈæbəbə",9.03,38.74],
+  ["Ghana","加纳","ˈɡɑːnə","gh",7.9,-1.0,"Ghana","Accra","阿克拉","əˈkrɑː",5.60,-0.19],
+  ["Tanzania","坦桑尼亚","ˌtænzəˈniːə","tz",-6.4,34.9,"Tanzania","Dodoma","多多马","dəˈdoʊmə",-6.16,35.75],
+  ["Uganda","乌干达","juˈɡændə","ug",1.4,32.3,"Uganda","Kampala","坎帕拉","kæmˈpɑːlə",0.35,32.58],
+  ["Angola","安哥拉","æŋˈɡoʊlə","ao",-11.2,17.9,"Angola","Luanda","罗安达","luˈændə",-8.84,13.23],
+  ["Panama","巴拿马","ˈpænəmɑː","pa",8.5,-80.8,"Panama","Panama City","巴拿马城","ˌpænəˈmɑː ˈsɪti",8.98,-79.52],
+  ["Costa Rica","哥斯达黎加","ˌkoʊstə ˈriːkə","cr",9.7,-83.8,"Costa Rica","San José","圣何塞","ˌsɑːn hoʊˈzeɪ",9.93,-84.08]
+];
+const DATA = RAW.map(r=>({
+  cEn:r[0], cZh:r[1], cIpa:r[2], iso:r[3], cLat:r[4], cLon:r[5], mapName:r[6],
+  capEn:r[7], capZh:r[8], capIpa:r[9], capLat:r[10], capLon:r[11]
+}));
+
+/* ===================== 视图（国家 / 首都） ===================== */
+let view = 'country';   // 'country' | 'capital'
+
+/* ===================== 工具 ===================== */
+const $ = id => document.getElementById(id);
+const norm = s => s.toLowerCase().replace(/[^a-z]/g,"");
+function flagEmoji(iso){ return iso.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0))); }
+
+/* ===================== 语音 ===================== */
+let voices = [];
+function loadVoices(){ try{ voices = speechSynthesis.getVoices() || []; }catch(e){} }
+if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged = loadVoices; loadVoices(); }
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US'; u.rate = 0.85; u.pitch = 1.05;
+    const v = voices.find(v=>/en[-_]US/i.test(v.lang)) || voices.find(v=>/^en/i.test(v.lang));
+    if(v) u.voice = v;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* ===================== 状态 ===================== */
+let order = DATA.map((_,i)=>i);
+let pos = 0;
+let locked = false;
+
+function current(){
+  const d = DATA[order[pos]];
+  if(view === 'capital'){
+    return { en:d.capEn, zh:d.capZh, ipa:d.capIpa, iso:d.iso, lat:d.capLat, lon:d.capLon, mapName:d.mapName };
+  }
+  return { en:d.cEn, zh:d.cZh, ipa:d.cIpa, iso:d.iso, lat:d.cLat, lon:d.cLon, mapName:d.mapName };
+}
+
+/* ===================== 标签（随视图变化） ===================== */
+function applyViewLabels(){
+  if(view === 'capital'){
+    $('pageTitle').textContent = '🏛️ 首都英语小课堂';
+    $('startText').innerHTML = '跟着小地球，一边看国旗一边学首都英文。<br>听完发音，把首都英文拼出来就好啦！';
+    $('answer').placeholder = '（语音不可用）在这里拼出英文首都名…';
+  }else{
+    $('pageTitle').textContent = '🌍 国家英语小课堂';
+    $('startText').innerHTML = '跟着小地球，一边看国旗一边学国家英文。<br>听完发音，把英文拼出来就好啦！';
+    $('answer').placeholder = '（语音不可用）在这里拼出英文国名…';
+  }
+}
+
+/* ===================== 渲染 ===================== */
+function render(){
+  const c = current();
+  locked = false;
+
+  // 球形国旗（始终显示所属国家国旗）
+  const img = $('flagImg'), em = $('flagEmoji');
+  img.style.display = 'block'; em.style.display = 'none';
+  img.onerror = () => { img.style.display='none'; em.style.display='flex'; em.textContent = flagEmoji(c.iso); };
+  img.src = `https://flagcdn.com/w320/${c.iso}.png`;
+
+  $('en').textContent = c.en;
+  $('ipa').textContent = `/${c.ipa}/`;
+  $('zh').textContent = c.zh;
+  $('progress').textContent = `第 ${pos+1} / ${order.length} 个`;
+  $('feedback').textContent = '';
+  $('feedback').className = 'feedback';
+  $('hintLine').textContent = '';
+
+  const ans = $('answer');
+  if(ans){ ans.value = ''; ans.disabled = false; ans.className = ''; }
+  stopListeningUI();
+  $('heard').textContent = '';
+  $('feedback').textContent = '';
+  $('feedback').className = 'feedback';
+  if($('fallback').style.display !== 'block') $('hintLine').textContent = '';
+
+  renderMap();
+  speak(c.en);
+}
+
+/* ===================== 世界地图 (d3 + topojson) ===================== */
+const MAP_W = 800, MAP_H = 400;
+let mapReady = false, projection, path, gMap, gPin, pin, pinHalo, pinLabel, features = [];
+
+async function initMap(){
+  try{
+    const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json());
+    features = topojson.feature(topo, topo.objects.countries).features;
+    projection = d3.geoEquirectangular().fitSize([MAP_W, MAP_H], {type:'Sphere'});
+    path = d3.geoPath(projection);
+    const svg = d3.select('#worldmap');
+    gMap = svg.append('g');
+    gMap.selectAll('path').data(features).join('path').attr('d', path).attr('class','country');
+    gPin = svg.append('g');
+    pinHalo = gPin.append('circle').attr('class','pin-halo').attr('r',9);
+    pin = gPin.append('circle').attr('class','pin').attr('r',5);
+    pinLabel = gPin.append('text').attr('class','pin-label');
+    mapReady = true;
+    renderMap();
+  }catch(e){
+    console.warn('map load failed', e);
+  }
+}
+
+function renderMap(){
+  if(!mapReady) return;
+  const c = current();
+  gMap.selectAll('path').attr('class', d => d.properties.name === c.mapName ? 'country active' : 'country');
+  const p = projection([c.lon, c.lat]);
+  if(p){
+    pin.attr('cx', p[0]).attr('cy', p[1]);
+    pinHalo.attr('cx', p[0]).attr('cy', p[1]);
+    pinLabel.attr('x', p[0]).attr('y', p[1]-12).text(c.en);
+  }
+}
+
+/* ===================== 答题逻辑 ===================== */
+function voiceCheck(transcript){
+  if(locked) return;
+  const c = current();
+  const t = norm(transcript);
+  if(t && (t === norm(c.en) || t.includes(norm(c.en)))){
+    locked = true;
+    const fb = $('feedback'); fb.textContent = '✅ 读对啦！'; fb.className = 'feedback ok';
+    cheer();
+    setTimeout(() => { if(pos < order.length-1){ pos++; render(); } else { finish(); } }, 1400);
+  }else{
+    const fb = $('feedback'); fb.textContent = '再试试看～ 跟着发音读'; fb.className = 'feedback bad';
+    if(!$('hintLine').textContent) showHint();
+  }
+}
+
+/* ---------- 语音识别 ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null, listening = false;
+function stopListeningUI(){ $('micBtn').classList.remove('active'); $('listening').style.display = 'none'; }
+function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+if(SR){
+  recog = new SR();
+  recog.lang = 'en-US'; recog.interimResults = false; recog.maxAlternatives = 1;
+  recog.onstart = () => { listening = true; $('micBtn').classList.add('active'); $('listening').style.display = 'block'; $('listenWord').textContent = current().en; $('heard').textContent = ''; };
+  recog.onresult = (e) => { const txt = e.results[0][0].transcript; $('heard').innerHTML = '我听到：<b>' + escapeHtml(txt) + '</b>'; voiceCheck(txt); };
+  recog.onerror = (e) => {
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') $('heard').textContent = '麦克风没打开权限哦，请在浏览器允许使用麦克风。';
+    else if(e.error === 'no-speech') $('heard').textContent = '没听清，再试一次吧';
+    else $('heard').textContent = '语音出错了：' + e.error;
+  };
+  recog.onend = () => { listening = false; stopListeningUI(); };
+}else{
+  $('fallback').style.display = 'block';
+  $('hintLine').textContent = '当前浏览器不支持语音识别，可用键盘输入代替。';
+}
+
+function showHint(){
+  const c = current();
+  const first = c.en.replace(/[^A-Za-z]/g,'')[0] || '';
+  $('hintLine').textContent = `💡 提示：第一个字母是「${first.toUpperCase()}」`;
+}
+
+function cheer(){
+  const el = $('cheer'); el.classList.add('show');
+  // 撒花
+  for(let i=0;i<18;i++){
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = Math.random()*100 + '%';
+    c.style.background = ['#ff7a59','#4dabf7','#ffd43b','#22c55e','#ff6a88'][i%5];
+    c.style.transform = `rotate(${Math.random()*360}deg)`;
+    el.appendChild(c);
+    const dur = 800 + Math.random()*700;
+    c.animate([{transform:`translateY(0) rotate(0)`,opacity:1},{transform:`translateY(${200+Math.random()*120}px) rotate(${360}deg)`,opacity:0}],
+      {duration:dur, easing:'ease-in'});
+    setTimeout(()=>c.remove(), dur);
+  }
+  setTimeout(()=>el.classList.remove('show'), 1300);
+}
+
+function finish(){
+  const el = $('cheer');
+  el.querySelector('.big').textContent = '🏆🎉🌟';
+  el.querySelector('.txt').textContent = '全部学完啦！';
+  el.classList.add('show');
+  const a = $('answer'); if(a) a.disabled = true;
+  const msg = view === 'capital' ? 'Great job! You finished all the capitals!' : 'Great job! You finished all the countries!';
+  speak(msg);
+  setTimeout(()=>{
+    el.classList.remove('show');
+    el.querySelector('.big').textContent = '🎉🎊🌟';
+    el.querySelector('.txt').textContent = '太棒了！';
+    pos = 0; render();
+  }, 2600);
+}
+
+function shuffle(){
+  for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+  pos = 0; render();
+}
+
+/* ===================== 视图切换 ===================== */
+function switchView(v){
+  if(v === view) return;
+  view = v;
+  pos = 0;
+  $('navCountry').classList.toggle('active', v === 'country');
+  $('navCapital').classList.toggle('active', v === 'capital');
+  applyViewLabels();
+  render();
+}
+
+/* ===================== 事件 ===================== */
+$('micBtn').addEventListener('click', () => {
+  if(!recog) return;
+  if(listening){ try{ recog.stop(); }catch(e){} return; }
+  try{ recog.start(); }catch(e){}
+});
+$('speakBtn').addEventListener('click', () => speak(current().en));
+$('hintBtn').addEventListener('click', showHint);
+$('prevBtn').addEventListener('click', () => { if(pos>0){ pos--; render(); } });
+$('nextBtn').addEventListener('click', () => { if(pos<order.length-1){ pos++; render(); } });
+$('shuffleBtn').addEventListener('click', shuffle);
+$('navCountry').addEventListener('click', () => switchView('country'));
+$('navCapital').addEventListener('click', () => switchView('capital'));
+
+$('startBtn').addEventListener('click', () => {
+  $('start').style.display = 'none';
+  render();
+});
+
+applyViewLabels();
+initMap();
+</script>
+</body>
+</html>
