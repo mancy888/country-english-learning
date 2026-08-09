@@ -315,6 +315,7 @@
   <div id="toast"></div>
 </div>
 
+<script src="decks/world-atlas.js"></script>
 <script src="decks/countries.js"></script>
 <script src="decks/sh-grade4.js"></script>
 <script src="decks/sh-grade6.js"></script>
@@ -329,6 +330,31 @@
 const DECKS = window.DECKS || [];
 const $ = id => document.getElementById(id);
 const norm = s => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+/* 编辑距离（Levenshtein）：用于近音容错，识别成 Columbia/Colmbia 等也算对 */
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j), cur = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+/* 近音容错：目标与候选相差很小即算对，但要求首尾字母一致，
+ * 避免短词互相误判（如 Chile/China、Iran/Iraq 不会互认）。阈值随词长放宽。 */
+function nearMatch(target, cand) {
+  if (!target || !cand) return false;
+  if (cand.indexOf(target) >= 0 || target.indexOf(cand) >= 0) return true; // 包含关系
+  if (target[0] !== cand[0] || target[target.length - 1] !== cand[cand.length - 1]) return false; // 首尾保护
+  const len = Math.max(target.length, cand.length);
+  const th = len <= 4 ? 1 : (len <= 7 ? 2 : 3);
+  return lev(target, cand) <= th;
+}
 const POS_LABEL = { v:'动词', adj:'形容词', phr:'短语', n:'名词' };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const flagEmoji = iso => iso.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)));
@@ -351,7 +377,7 @@ function record(deckId, w, good) {
   const k = sKey(deckId, w.en);
   const s = DB.stats[k] || (DB.stats[k] = { ok: 0, bad: 0 });
   s.deck = deckId;
-  s.w = { en: w.en, ipa: w.ipa, zh: w.zh, pos: w.pos || '', geo: w.geo || null };
+  s.w = { en: w.en, ipa: w.ipa, zh: w.zh, pos: w.pos || '', geo: w.geo || null, aliases: w.aliases || null };
   if (good) { s.ok++; DB.day.ok++; } else { s.bad++; DB.day.bad++; }
   s.ts = Date.now();
   if (DB.day.seen.indexOf(k) < 0) DB.day.seen.push(k);
@@ -369,14 +395,33 @@ let voices = [];
 function loadVoices() { try { voices = speechSynthesis.getVoices() || []; } catch (e) {} }
 if ('speechSynthesis' in window) { speechSynthesis.onvoiceschanged = loadVoices; loadVoices(); }
 function speak(text, rate) {
-  if (!('speechSynthesis' in window) || !text) return;
+  if (!('speechSynthesis' in window) || !text) {
+    /* 不支持 TTS 时，若处于自动跟读模式，直接把麦克风交给小朋友 */
+    if (autoMode && started && !listening && !transitioning) ensureListening();
+    return;
+  }
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US'; u.rate = rate || 0.85; u.pitch = 1.05;
     const v = voices.find(v => /en[-_]US/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang));
     if (v) u.voice = v;
+    /* 播放发音前若麦克风在听，记下来，播完再恢复 */
+    wantMicAfterTts = (listening || autoMode);
+    let finished = false;
+    const finishTts = () => {
+      if (finished) return; finished = true;
+      ttsActive = false;
+      if (wantMicAfterTts && started && !transitioning) { wantMicAfterTts = false; ensureListening(); }
+      else wantMicAfterTts = false;
+    };
+    u.onend = finishTts; u.onerror = finishTts;
+    u.onstart = () => { if (recog && listening) { try { recog.stop(); } catch (e) {} } };
     speechSynthesis.speak(u);
+    ttsActive = true;   // 同步标记：播放期间忽略麦克风结果，避免把网站自己的发音录进去当成读对
+    /* 兜底：万一浏览器没触发 onend，按字数估算最长播放时间后强制恢复监听 */
+    const maxMs = 2000 + text.replace(/[^A-Za-z]/g, '').length * 130;
+    setTimeout(finishTts, maxMs);
   } catch (e) {}
 }
 
@@ -494,9 +539,7 @@ function render() {
   $('bStatus').textContent = '点上面的麦克风开始'; $('bStatus').className = 'b-status';
   $('bHeard').textContent = ''; $('bMicBtn').classList.remove('active');
 
-  if (started) speak(c.en);
-  /* 自动跟读：若已开启，则保持麦克风常开（读对进入下一词后自动继续听） */
-  if (autoMode && !listening && !transitioning && started) startAuto();
+  if (started) speak(c.en);   /* 自动跟读时，speak 会在发音播完后再帮小朋友重新打开麦克风 */
 }
 function setFb(txt, cls) { const f = $('feedback'); f.textContent = txt; f.className = 'feedback' + (cls ? ' ' + cls : ''); }
 function setB(txt, cls) { const f = $('bStatus'); f.textContent = txt; f.className = 'b-status' + (cls ? ' ' + cls : ''); }
@@ -507,22 +550,26 @@ let mapReady = false, mapPending = false, projection, path, gMap, gPin, pin, pin
 function ensureMap() {
   if (mapReady || mapPending) return;
   if (typeof d3 === 'undefined' || typeof topojson === 'undefined') return;
+  const build = topo => {
+    const features = topojson.feature(topo, topo.objects.countries).features;
+    projection = d3.geoEquirectangular().fitSize([MAP_W, MAP_H], { type: 'Sphere' });
+    path = d3.geoPath(projection);
+    const svg = d3.select('#worldmap'); svg.selectAll('*').remove();
+    gMap = svg.append('g');
+    gMap.selectAll('path').data(features).join('path').attr('d', path).attr('class', 'country');
+    gPin = svg.append('g');
+    pinHalo = gPin.append('circle').attr('class', 'pin-halo').attr('r', 9);
+    pin = gPin.append('circle').attr('class', 'pin').attr('r', 5);
+    pinLabel = gPin.append('text').attr('class', 'pin-label');
+    mapReady = true; mapPending = false; renderMap();
+  };
+  /* 优先用本地打包的底图数据（decks/world-atlas.js → window.WORLD_TOPO），
+   * 不再依赖运行时 fetch，避免预览沙箱 / 严格 CSP 拦截 fetch 导致地图空白。 */
+  if (window.WORLD_TOPO) { build(window.WORLD_TOPO); return; }
   mapPending = true;
   fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
     .then(r => r.json())
-    .then(topo => {
-      const features = topojson.feature(topo, topo.objects.countries).features;
-      projection = d3.geoEquirectangular().fitSize([MAP_W, MAP_H], { type: 'Sphere' });
-      path = d3.geoPath(projection);
-      const svg = d3.select('#worldmap'); svg.selectAll('*').remove();
-      gMap = svg.append('g');
-      gMap.selectAll('path').data(features).join('path').attr('d', path).attr('class', 'country');
-      gPin = svg.append('g');
-      pinHalo = gPin.append('circle').attr('class', 'pin-halo').attr('r', 9);
-      pin = gPin.append('circle').attr('class', 'pin').attr('r', 5);
-      pinLabel = gPin.append('text').attr('class', 'pin-label');
-      mapReady = true; mapPending = false; renderMap();
-    })
+    .then(build)
     .catch(e => { mapPending = false; console.warn('map load failed', e); });
 }
 function renderMap() {
@@ -705,14 +752,23 @@ function recommendAccessory(iso, en, zh) {
   ];
   let h = 0; for (let i = 0; i < iso.length; i++) h = (h * 31 + iso.charCodeAt(i)) >>> 0;
   const pick = pool[h % pool.length];
-  return { kind: pick.kind, color: pick.color, emoji: pick.emoji, label: pick.label + '（AI 推荐）' };
+  return { kind: pick.kind, color: pick.color, emoji: pick.emoji, label: pick.label };
 }
 
 /* ---------------- 判定 ---------------- */
-function check(txt) {
+function check(txts) {
   if (locked) return;
-  const c = current(), t = norm(txt), target = norm(c.en);
-  const good = !!t && target && (t === target || t.indexOf(target) >= 0);
+  const c = current();
+  const target = norm(c.en);
+  const aliases = (c.aliases || []).map(norm);
+  const cands = Array.isArray(txts) ? txts : [txts];
+  const good = cands.some(raw => {
+    const n = norm(raw);
+    if (!n || !target) return false;
+    if (n === target || n.indexOf(target) >= 0) return true;            // 完全命中，或识别文本包含完整单词（如 "the colombia"）
+    if (aliases.some(a => a && (n === a || n.indexOf(a) >= 0))) return true; // 命中易混别名（如 columbia → colombia）
+    return nearMatch(target, n);                                        // 近音模糊容错（Columbia/Colmbia/Kolombia…）
+  });
   if (good) {
     locked = true;
     record(curDeckId(), c, true);
@@ -744,20 +800,37 @@ function showHint() {
 /* ---------------- 语音识别 ---------------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null, listening = false, autoMode = false, transitioning = false;
+let ttsActive = false, wantMicAfterTts = false;
 function stopMicUI() { $('micBtn').classList.remove('active'); $('listening').style.display = 'none'; }
+/* 自动跟读模式下，确保麦克风处于监听状态（必要时重开） */
+function ensureListening() {
+  if (!started || transitioning || ttsActive || listening) return;
+  if (autoMode || wantMicAfterTts) {
+    try { recog.start(); }
+    catch (err) { autoMode = false; toast('点一下麦克风继续跟读～'); }
+  }
+}
 if (SR) {
   recog = new SR();
-  recog.lang = 'en-US'; recog.interimResults = false; recog.maxAlternatives = 1;
+  recog.lang = 'en-US'; recog.interimResults = false; recog.maxAlternatives = 3;
   recog.onstart = () => {
     listening = true;
     if (mode === 'see') { $('micBtn').classList.add('active'); $('listening').style.display = 'block'; $('listenWord').textContent = current().en; $('heard').textContent = ''; }
     else { $('bMicBtn').classList.add('active'); setB('🎧 我在听…', ''); $('bHeard').textContent = ''; }
   };
   recog.onresult = e => {
-    const txt = e.results[0][0].transcript;
-    if (mode === 'see') $('heard').innerHTML = '我听到：<b>' + esc(txt) + '</b>';
-    else $('bHeard').textContent = '我听到：' + txt;
-    check(txt);
+    if (ttsActive) return;            // 播放发音期间的结果一律忽略，避免把网站自己的声音当成读对
+    const alts = e.results[0];
+    const cands = [];
+    for (let i = 0; i < alts.length; i++) cands.push(alts[i].transcript);
+    const txt = cands[0] || '';
+    if (mode === 'see') {
+      $('heard').innerHTML = '我听到：<b>' + esc(txt) + '</b>' +
+        (cands.length > 1 ? ' <span style="opacity:.6;font-size:12px;">（候选：' + esc(cands.slice(1).join(' / ')) + '）</span>' : '');
+    } else {
+      $('bHeard').textContent = '我听到：' + txt;
+    }
+    check(cands);
   };
   recog.onerror = e => {
     const msg = (e.error === 'not-allowed' || e.error === 'service-not-allowed')
@@ -767,14 +840,11 @@ if (SR) {
   };
   recog.onend = () => {
     listening = false; stopMicUI(); $('bMicBtn').classList.remove('active');
+    /* 播放发音中：交给 speak 的 onend 统一在播完后再恢复监听，避免把网站自己的声音录进去 */
+    if (ttsActive) return;
     /* 自动跟读：无论对错，麦克风自动重新开启，免去手动点击 */
     if (autoMode && !transitioning && started) {
-      setTimeout(() => {
-        if (autoMode && !transitioning && started) {
-          try { recog.start(); }
-          catch (err) { autoMode = false; toast('点一下麦克风继续跟读～'); }
-        }
-      }, 200);
+      setTimeout(ensureListening, 200);
     }
   };
 } else {

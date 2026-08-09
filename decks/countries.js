@@ -107,13 +107,21 @@
     ["Costa Rica","哥斯达黎加","ˌkoʊstə ˈriːkə","cr",9.7,-83.8,"Costa Rica","San José","圣何塞","ˌsɑːn hoʊˈzeɪ",9.93,-84.08]
   ];
 
+  /* 语音识别同音 / 易混词别名：识别结果命中任一别名也算读对
+   * （例：Colombia 常被识别成 Columbia；后续若还有类似词，往这里加即可） */
+  const ALIASES = {
+    "Colombia": ["Columbia"]
+  };
+
   const countries = RAW.map(r => ({
     en: r[0], zh: r[1], ipa: r[2],
+    aliases: ALIASES[r[0]] || [],
     geo: { iso: r[3], lat: r[4], lon: r[5], mapName: r[6] }
   }));
 
   const capitals = RAW.map(r => ({
     en: r[7], zh: r[8], ipa: r[9],
+    aliases: ALIASES[r[7]] || [],
     geo: { iso: r[3], lat: r[10], lon: r[11], mapName: r[6] }
   }));
 
