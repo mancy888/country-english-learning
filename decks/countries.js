@@ -117,6 +117,31 @@
     geo: { iso: r[3], lat: r[10], lon: r[11], mapName: r[6] }
   }));
 
+  /* 国旗立体球体的专属装饰配件
+   * 仅五常（美/英/法/俄/中）+ 知名度较高的国家逐一配置；
+   * 其余国家由 index.html 的 recommendAccessory() 做 AI 智能推荐。
+   * 配饰摆放在球体中上部（眼/头顶位置）。 */
+  window.GLOBE_ACCESSORIES = {
+    us: { kind: 'sunglasses', color: 0x141414, emoji: '🕶️', label: '美国戴上了酷酷墨镜' },
+    gb: { kind: 'crown',      color: 0xffd43b, emoji: '👑', label: '英国戴上了小皇冠' },
+    fr: { kind: 'hat',        color: 0x3b5bdb, emoji: '🎩', label: '法国戴上了贝雷帽' },
+    cn: { kind: 'star',       color: 0xe03131, emoji: '⭐', label: '中国头顶红五星' },
+    ru: { kind: 'hat',        color: 0x6b4f2a, emoji: '🧢', label: '俄罗斯戴上了毛皮帽' },
+    jp: { kind: 'headband',   color: 0xe03131, emoji: '🎌', label: '日本系上了必胜头带' },
+    de: { kind: 'glasses',    color: 0x495057, emoji: '🤓', label: '德国戴上了圆框眼镜' },
+    br: { kind: 'sunglasses', color: 0x212529, emoji: '🕶️', label: '巴西戴上了墨镜' },
+    ca: { kind: 'hat',        color: 0xe03131, emoji: '🍁', label: '加拿大戴上了红枫帽' },
+    au: { kind: 'hat',        color: 0xb08968, emoji: '🤠', label: '澳大利亚戴上了牛仔帽' },
+    in: { kind: 'headband',   color: 0xf08c00, emoji: '🎌', label: '印度系上了藏红花头带' },
+    it: { kind: 'glasses',    color: 0x495057, emoji: '🤓', label: '意大利戴上了圆框眼镜' },
+    es: { kind: 'hat',        color: 0xe03131, emoji: '🎩', label: '西班牙戴上了小红帽' },
+    kr: { kind: 'glasses',    color: 0x495057, emoji: '🤓', label: '韩国戴上了圆框眼镜' },
+    mx: { kind: 'hat',        color: 0x2f9e44, emoji: '🎩', label: '墨西哥戴上了绿帽子' },
+    eg: { kind: 'headband',   color: 0xf0c040, emoji: '👑', label: '埃及戴上了法老金头带' },
+    za: { kind: 'sunglasses', color: 0x212529, emoji: '🕶️', label: '南非戴上了墨镜' },
+    nl: { kind: 'hat',        color: 0xf76707, emoji: '🎩', label: '荷兰戴上了橙色帽' }
+  };
+
   window.DECKS = window.DECKS || [];
   window.DECKS.push({
     id: 'world',
