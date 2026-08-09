@@ -225,6 +225,7 @@
     .word{ font-size:34px; }
   }
 </style>
+<link rel="stylesheet" href="game/game.css">
 </head>
 <body>
 <div class="app">
@@ -280,7 +281,7 @@
       </div>
     </div>
 
-    <div class="practice">
+    <div class="practice" id="practiceBlock">
       <div class="progress" id="progress">第 1 / 1 个</div>
       <div class="hint-line" id="hintLine"></div>
       <div class="fallback" id="fallback" style="display:none">
@@ -294,6 +295,20 @@
       </div>
       <div class="steps" id="steps">👂 听发音 → 🎤 点一下开始跟读 → 🎉 读对自动下一词（麦克风会自动开着，读错也直接再读，不用再点）</div>
     </div>
+
+    <!-- ============ 英语冒险闯关（嵌套游戏区） ============ -->
+    <section id="gameArea">
+      <div class="game-top">
+        <h2 class="game-title" id="gameTitle">🚀 英语冒险</h2>
+        <div class="game-tools">
+          <button class="tool-btn" id="gameBlindBtn">🌗 闭眼听读</button>
+          <button class="tool-btn" id="gameExitBtn">🚪 退出冒险</button>
+        </div>
+      </div>
+      <div class="progress" id="gameProg"></div>
+      <div class="game-body" id="gameBody"></div>
+      <div id="gameBlind" class="blind"></div>
+    </section>
   </main>
 
   <!-- ============ 地图列（有地理信息时显示） ============ -->
@@ -319,6 +334,19 @@
 <script src="decks/countries.js"></script>
 <script src="decks/sh-grade4.js"></script>
 <script src="decks/sh-grade6.js"></script>
+<script src="game/game-data.js"></script>
+<script src="game/engine.js"></script>
+<script src="game/maze3d.js"></script>
+<script src="game/campus.js"></script>
+<script src="game/space.js"></script>
+<script>
+/* 英语冒险：游戏内工具按钮（脚本已在主内核之前加载，GameEngine 已就绪） */
+document.getElementById('gameBlindBtn').addEventListener('click', () => GameEngine.toggleBlind());
+document.getElementById('gameExitBtn').addEventListener('click', () => {
+  GameEngine.exit();
+  location.hash = '#/' + (DECKS[0] ? DECKS[0].id : '') + '/' + (DECKS[0] ? DECKS[0].groups[0].id : '');
+});
+</script>
 <script>
 /* =====================================================================
  *  英语小课堂 · 内核
@@ -461,6 +489,23 @@ function buildNav() {
     root.appendChild(body);
   });
 
+  /* 英语冒险入口 */
+  const gh = document.createElement('button');
+  gh.className = 'deck-hd' + (openSet.has('game') ? ' open' : '');
+  gh.innerHTML = '<span>🚀</span><span class="nm">英语冒险</span><span class="caret">▼</span>';
+  gh.addEventListener('click', () => { openSet.has('game') ? openSet.delete('game') : openSet.add('game'); buildNav(); });
+  root.appendChild(gh);
+  const gbody = document.createElement('div');
+  gbody.className = 'deck-body' + (openSet.has('game') ? ' open' : '');
+  [['campus', '🏫 校园关'], ['space', '🚀 太空终极关']].forEach(([id, nm]) => {
+    const b = document.createElement('button');
+    b.className = 'nav-btn' + (GameEngine.isInGame() && location.hash === '#/game/' + id ? ' active' : '');
+    b.textContent = nm;
+    b.addEventListener('click', () => { location.hash = '#/game/' + id; });
+    gbody.appendChild(b);
+  });
+  root.appendChild(gbody);
+
   const wb = document.createElement('button');
   wb.className = 'deck-hd wrong' + (wrongMode ? ' active' : '');
   wb.innerHTML = '<span>🔁</span><span class="nm">只练错词</span><span class="badge" id="wrongBadge">0</span>';
@@ -477,6 +522,18 @@ function paintWrongBadge() {
 /* ---------------- 路由 #/板块/分组 ---------------- */
 function applyHash() {
   const parts = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+  /* 英语冒险：独立模块路由 */
+  if (parts[0] === 'game') {
+    const lv = parts[1] === 'space' ? 'space' : 'campus';
+    if (window.GameLevels && window.GameLevels[lv]) {
+      GameEngine.exit();
+      window.GameLevels[lv]();
+    } else {
+      history.replaceState(null, '', '#/' + (DECKS[0] ? DECKS[0].id : '') + '/' + (DECKS[0] ? DECKS[0].groups[0].id : ''));
+    }
+    return;
+  }
+  if (GameEngine.isInGame()) GameEngine.exit();
   if (parts[0] === 'wrong') {
     const list = wrongStats();
     if (!list.length) {
